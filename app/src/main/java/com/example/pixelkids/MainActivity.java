@@ -1,84 +1,175 @@
 package com.example.pixelkids;
 
-import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
-import androidx.core.content.PackageManagerCompat;
 
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
 import android.os.Bundle;
+import android.provider.MediaStore;
+import android.util.Log;
+import android.view.View;
+import android.widget.Button;
+import android.widget.ImageView;
 import android.widget.Toast;
 
-import org.opencv.android.CameraActivity;
-import org.opencv.android.CameraBridgeViewBase;
-import org.opencv.android.JavaCameraView;
+import org.opencv.android.BaseLoaderCallback;
+import org.opencv.android.LoaderCallbackInterface;
 import org.opencv.android.OpenCVLoader;
+import org.opencv.android.Utils;
 import org.opencv.core.Mat;
+import org.opencv.core.MatOfRect;
+import org.opencv.core.Rect;
+import org.opencv.core.Scalar;
+import org.opencv.core.Size;
+import org.opencv.imgproc.Imgproc;
+import org.opencv.objdetect.CascadeClassifier;
 
-import java.util.Collections;
-import java.util.List;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 
-public class MainActivity extends CameraActivity {
+public class MainActivity extends AppCompatActivity {
 
     private static final int PIDO_PERMISOS_CAMARA = 100 ;
-    private CameraBridgeViewBase camara;
+    private static final int CODIGO_GALERIA = 101;
+    private CascadeClassifier cascadeClassifier;
+    private Mat rgb, cambiar_rgb;
+    private MatOfRect rects;
+    private Button btnGaleria, btnCamara;
+    private Bitmap bitmapGaleria, bitmap;
+    private ImageView imageView, imagePixelada;
+
+    //Llamada asyncrona de la propia libreria de OpenCV para poder declarar las variables
+    //de la propia libreria
+    private BaseLoaderCallback mLoaderCallback = new BaseLoaderCallback(this) {
+        @Override
+        public void onManagerConnected(int status) {
+            switch (status) {
+                case LoaderCallbackInterface.SUCCESS:
+                {
+                    Log.d("OpenCV", "OpenCV loaded successfully");
+                    rgb = new Mat();
+                    rects = new MatOfRect();
+
+                    LeerFicheroFrontalFace();
+                } break;
+                default:
+                {
+                    super.onManagerConnected(status);
+                } break;
+            }
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        camara = findViewById(R.id.javaCameraView);
+        btnCamara = findViewById(R.id.btn);
+        btnGaleria = findViewById(R.id.btnGaleria);
+        imageView = findViewById(R.id.imageView);
+        imagePixelada = findViewById(R.id.imagePixelada);
 
-        camara.setCvCameraViewListener(new CameraBridgeViewBase.CvCameraViewListener2() {
+        btnGaleria.setOnClickListener(new View.OnClickListener() {
             @Override
-            public void onCameraViewStarted(int width, int height) {
-
-            }
-
-            @Override
-            public void onCameraViewStopped() {
-
-            }
-
-            @Override
-            public Mat onCameraFrame(CameraBridgeViewBase.CvCameraViewFrame inputFrame) {
-                return inputFrame.rgba();
+            public void onClick(View v) {
+                Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+                intent.setType("image/*");
+                startActivityForResult(intent, CODIGO_GALERIA);
+                if(OpenCVLoader.initDebug()){
+                    mLoaderCallback.onManagerConnected(LoaderCallbackInterface.SUCCESS);
+                };
             }
         });
 
         if(permisosCamara()){
-            if(OpenCVLoader.initDebug()){
-                camara.enableView();
-            };
+            btnCamara.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    startActivity(new Intent(MainActivity.this, CamaraActivity.class));
+                }
+            });
         }
     }
 
     @Override
-    protected List<? extends CameraBridgeViewBase> getCameraViewList() {
-        return Collections.singletonList(camara);
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if(requestCode==CODIGO_GALERIA && data!= null){
+            try {
+                bitmapGaleria = MediaStore.Images.Media.getBitmap(this.getContentResolver(), data.getData());
+                bitmap = MediaStore.Images.Media.getBitmap(this.getContentResolver(), data.getData());
+
+                Utils.bitmapToMat(bitmapGaleria,rgb);
+
+                //Cambiar posicion
+                cambiar_rgb = rgb.t();
+
+                int height = (int)(cambiar_rgb.height()*0.1);
+                int j = 0;
+                //Detector de caras
+                cascadeClassifier.detectMultiScale(cambiar_rgb, rects, 1.1, 2,2,
+                        new Size(height,height), new Size());
+
+                //Pixelar cara
+                for(Rect rect : rects.toList()){
+                    Mat submat = cambiar_rgb.submat(rect);
+                    Imgproc.blur(submat, submat,new Size(100,100));
+                    Imgproc.rectangle(cambiar_rgb, rect, new Scalar(0,0,0,1), 0);
+
+                    j++;
+                }
+
+                Utils.matToBitmap(cambiar_rgb.t(),bitmapGaleria);
+
+                imageView.setImageBitmap(bitmapGaleria);
+                imagePixelada.setImageBitmap(bitmap);
+
+
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
     }
 
-    @Override
-    protected void onResume() {
-        super.onResume();
-        camara.enableView();
-    }
+    //Leer fichero XML de frontalface.xml
+    void LeerFicheroFrontalFace(){
 
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        camara.disableView();
-    }
+        try {
+            InputStream inputStream = getResources().openRawResource(R.raw.lbpcascade_frontalface);
+            File file = new File(getDir("cascade", MODE_PRIVATE), "lbpcascade_frontalface");
+            FileOutputStream fileOutputStream = new FileOutputStream(file);
 
-    @Override
-    protected void onPause() {
-        super.onPause();
-        camara.disableView();
+            byte[] bytes = new byte[4096];
+            int leer_bytes;
+
+            while((leer_bytes = inputStream.read(bytes)) != -1){
+                fileOutputStream.write(bytes,0,leer_bytes);
+            }
+
+            cascadeClassifier = new CascadeClassifier(file.getAbsolutePath());
+            if(cascadeClassifier.empty()) cascadeClassifier = null;
+
+            //cerrar flujos
+            inputStream.close();
+            fileOutputStream.close();
+            file.delete();
+
+
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        }catch (IOException e){
+            e.printStackTrace();
+        }
+
     }
 
     //Confirmación de los pedidos de la Camara
