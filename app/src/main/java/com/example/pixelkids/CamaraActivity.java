@@ -2,8 +2,10 @@ package com.example.pixelkids;
 
 import androidx.appcompat.app.AppCompatActivity;
 
+import android.app.Activity;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
 
@@ -12,6 +14,7 @@ import org.opencv.android.CameraActivity;
 import org.opencv.android.CameraBridgeViewBase;
 import org.opencv.android.LoaderCallbackInterface;
 import org.opencv.android.OpenCVLoader;
+import org.opencv.core.Core;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfRect;
 import org.opencv.core.Rect;
@@ -38,7 +41,8 @@ public class CamaraActivity extends CameraActivity{
     private MatOfRect rects;
     private CameraBridgeViewBase camara;
     ImageView imageView;
-    private Button button;
+    private Button btnRotar, btnHacerFoto;
+    private boolean camaraFrontal = false;
     private BaseLoaderCallback mLoaderCallBack = new BaseLoaderCallback(this) {
         @Override
         public void onManagerConnected(int status) {
@@ -67,7 +71,8 @@ public class CamaraActivity extends CameraActivity{
         setContentView(R.layout.activity_camara);
 
         camara = findViewById(R.id.camara);
-        //button = findViewById(R.id.);
+        btnRotar = findViewById(R.id.btn);
+        btnHacerFoto = findViewById(R.id.btnHacerFoto);
 
         camara.setCvCameraViewListener(new CameraBridgeViewBase.CvCameraViewListener2() {
             @Override
@@ -87,6 +92,10 @@ public class CamaraActivity extends CameraActivity{
                 mRgb = inputFrame.rgba();
                 mGris = inputFrame.gray();
 
+                if(camaraFrontal){
+                    Core.flip(mRgb, mRgb,1);
+                }
+
                 //Cambiar posicion
                 cambiar_rgb = mRgb.t();
                 cambiar_gris = mGris.t();
@@ -94,17 +103,15 @@ public class CamaraActivity extends CameraActivity{
                 int height = (int)(cambiar_rgb.height()*0.1);
 
                 //Detector de caras
-                cascadeClassifier.detectMultiScale(cambiar_gris, rects, 1.1, 2,
-                        2, new Size(height,height), new Size());
+                cascadeClassifier.detectMultiScale(cambiar_gris, rects, 1.1, 3,
+                        0, new Size(height,height), new Size());
 
                 //Pixelar cara
-                for(Rect rect : rects.toList()){
-                    Mat submat = cambiar_rgb.submat(rect);
-                    Imgproc.blur(submat, submat,new Size(20,20));
-                    Imgproc.rectangle(cambiar_rgb, rect, new Scalar(0,0,0,1), 0);
+                for(Rect face : rects.toList()){
+                    Mat submat = cambiar_rgb.submat(face);
+                    Imgproc.blur(submat, submat,new Size(50,50));
+                    Imgproc.rectangle(cambiar_rgb, face, new Scalar(0,0,0,1), 0);
                 }
-
-
 
                 return cambiar_rgb.t();
             }
@@ -112,6 +119,30 @@ public class CamaraActivity extends CameraActivity{
 
         if(OpenCVLoader.initDebug()){
             camara.enableView();
+            btnRotar.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    camara.disableView();
+
+                    if(camaraFrontal){
+                        camara.setCameraIndex(CameraBridgeViewBase.CAMERA_ID_BACK);
+                        camaraFrontal = false;
+                    }else{
+                        camara.setCameraIndex(CameraBridgeViewBase.CAMERA_ID_FRONT);
+                        camaraFrontal = true;
+                    }
+
+                    camara.enableView();
+                }
+            });
+
+            btnHacerFoto.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+
+                }
+            });
+
             mLoaderCallBack.onManagerConnected(LoaderCallbackInterface.SUCCESS);
         };
     }
@@ -119,8 +150,8 @@ public class CamaraActivity extends CameraActivity{
     void LeerFicheroFrontalFace(){
 
         try {
-            InputStream inputStream = getResources().openRawResource(R.raw.lbpcascade_frontalface);
-            File file = new File(getDir("cascade", MODE_PRIVATE), "lbpcascade_frontalface");
+            InputStream inputStream = getResources().openRawResource(R.raw.haarcascade_frontalface_default);
+            File file = new File(getDir("cascade", MODE_PRIVATE), "haarcascade_frontalface_default");
             FileOutputStream fileOutputStream = new FileOutputStream(file);
 
             byte[] bytes = new byte[4096];

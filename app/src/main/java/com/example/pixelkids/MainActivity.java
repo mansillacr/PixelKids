@@ -26,6 +26,8 @@ import org.opencv.core.MatOfRect;
 import org.opencv.core.Rect;
 import org.opencv.core.Scalar;
 import org.opencv.core.Size;
+import org.opencv.dnn.Dnn;
+import org.opencv.dnn.Net;
 import org.opencv.imgproc.Imgproc;
 import org.opencv.objdetect.CascadeClassifier;
 
@@ -34,6 +36,7 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URISyntaxException;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -45,6 +48,8 @@ public class MainActivity extends AppCompatActivity {
     private Button btnGaleria, btnCamara;
     private Bitmap bitmapGaleria, bitmap;
     private ImageView imageView, imagePixelada;
+
+    private ReconocimientoEdad reconocimientoEdad;
 
     //Llamada asyncrona de la propia libreria de OpenCV para poder declarar las variables
     //de la propia libreria
@@ -90,14 +95,13 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        if(permisosCamara()){
-            btnCamara.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    startActivity(new Intent(MainActivity.this, CamaraActivity.class));
-                }
-            });
-        }
+        btnCamara.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startActivity(new Intent(MainActivity.this, CamaraActivity.class));
+            }
+        });
+
     }
 
     @Override
@@ -105,6 +109,8 @@ public class MainActivity extends AppCompatActivity {
         super.onActivityResult(requestCode, resultCode, data);
         if(requestCode==CODIGO_GALERIA && data!= null){
             try {
+                //CaffeModel caffeModel = new CaffeModel("deploy_agenet.prototxt", "age_net.caffemodel");
+
                 bitmapGaleria = MediaStore.Images.Media.getBitmap(this.getContentResolver(), data.getData());
                 bitmap = MediaStore.Images.Media.getBitmap(this.getContentResolver(), data.getData());
 
@@ -114,21 +120,32 @@ public class MainActivity extends AppCompatActivity {
                 cambiar_rgb = rgb.t();
 
                 int height = (int)(cambiar_rgb.height()*0.1);
-                int j = 0;
+
                 //Detector de caras
-                cascadeClassifier.detectMultiScale(cambiar_rgb, rects, 1.1, 2,2,
+                cascadeClassifier.detectMultiScale(cambiar_rgb, rects, 1.1, 2,2 ,
                         new Size(height,height), new Size());
 
                 //Pixelar cara
                 for(Rect rect : rects.toList()){
                     Mat submat = cambiar_rgb.submat(rect);
+
+                    //float[] pre = caffeModel.prediccion(submat);
+
                     Imgproc.blur(submat, submat,new Size(100,100));
                     Imgproc.rectangle(cambiar_rgb, rect, new Scalar(0,0,0,1), 0);
-
-                    j++;
                 }
 
                 Utils.matToBitmap(cambiar_rgb.t(),bitmapGaleria);
+
+
+                //TENSORFLOW MODEL.TFLITE
+
+                int inputSize = 96;
+                reconocimientoEdad = new ReconocimientoEdad(getAssets(), MainActivity.this, "model.tflite", inputSize);
+
+                Utils.matToBitmap(reconocimientoEdad.reconocimientoImagen(rgb,getApplicationContext()),bitmapGaleria);
+
+
 
                 imageView.setImageBitmap(bitmapGaleria);
                 imagePixelada.setImageBitmap(bitmap);
@@ -144,8 +161,8 @@ public class MainActivity extends AppCompatActivity {
     void LeerFicheroFrontalFace(){
 
         try {
-            InputStream inputStream = getResources().openRawResource(R.raw.lbpcascade_frontalface);
-            File file = new File(getDir("cascade", MODE_PRIVATE), "lbpcascade_frontalface");
+            InputStream inputStream = getResources().openRawResource(R.raw.haarcascade_frontalface_default);
+            File file = new File(getDir("cascade", MODE_PRIVATE), "haarcascade_frontalface_default");
             FileOutputStream fileOutputStream = new FileOutputStream(file);
 
             byte[] bytes = new byte[4096];
